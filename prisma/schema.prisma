@@ -1,0 +1,594 @@
+// prisma/schema.prisma
+// Nuke Tracker - Complete Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// USERS & AUTH
+// ─────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  clerkId       String   @unique
+  email         String   @unique
+  name          String?
+  avatarUrl     String?
+  plan          Plan     @default(FREE)
+  stripeId      String?  @unique
+  subscriptionId String? @unique
+  subscriptionEnd DateTime?
+  apiKey        String?  @unique @default(cuid())
+  apiCallsToday Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  alerts        Alert[]
+  customModels  CustomModel[]
+  parlays       Parlay[]
+  watchlist     PlayerWatchlist[]
+
+  @@index([clerkId])
+  @@index([email])
+}
+
+enum Plan {
+  FREE
+  PRO
+  ELITE
+}
+
+// ─────────────────────────────────────────
+// MLB DATA
+// ─────────────────────────────────────────
+
+model Team {
+  id           String  @id // MLB team ID
+  name         String
+  abbreviation String  @unique
+  city         String
+  division     String
+  league       String
+  stadium      Stadium? @relation(fields: [stadiumId], references: [id])
+  stadiumId    String?
+
+  players      Player[]
+  homeGames    Game[]   @relation("HomeTeam")
+  awayGames    Game[]   @relation("AwayTeam")
+
+  @@index([abbreviation])
+}
+
+model Stadium {
+  id           String  @id
+  name         String
+  city         String
+  state        String
+  latitude     Float
+  longitude    Float
+  altitude     Int     // feet above sea level
+  capacity     Int
+  roofType     RoofType @default(OPEN)
+  surface      String  @default("Grass")
+  
+  // Dimensions (feet)
+  leftField    Int
+  leftCenter   Int
+  centerField  Int
+  rightCenter  Int
+  rightField   Int
+  
+  // Park Factors (1.000 = league average)
+  parkFactor   Float   @default(1.000)
+  hrFactor     Float   @default(1.000)
+  lhHrFactor   Float   @default(1.000)
+  rhHrFactor   Float   @default(1.000)
+  
+  teams        Team[]
+  games        Game[]
+
+  @@index([name])
+}
+
+enum RoofType {
+  OPEN
+  RETRACTABLE
+  FIXED_DOME
+}
+
+model Player {
+  id           String   @id // MLB player ID
+  name         String
+  firstName    String
+  lastName     String
+  position     String
+  bats         Hand     @default(RIGHT)
+  throws       Hand     @default(RIGHT)
+  jerseyNumber String?
+  birthDate    DateTime?
+  height       String?
+  weight       Int?
+  active       Boolean  @default(true)
+  
+  teamId       String?
+  team         Team?    @relation(fields: [teamId], references: [id])
+
+  // Current season stats (denormalized for speed)
+  season       Int      @default(2026)
+  gamesPlayed  Int      @default(0)
+  atBats       Int      @default(0)
+  homeRuns     Int      @default(0)
+  avg          Float    @default(0)
+  obp          Float    @default(0)
+  slg          Float    @default(0)
+  ops          Float    @default(0)
+  iso          Float    @default(0)
+  
+  // Statcast (denormalized for speed)
+  barrelPct    Float    @default(0)
+  hardHitPct   Float    @default(0)
+  sweetSpotPct Float    @default(0)
+  avgExitVelo  Float    @default(0)
+  maxExitVelo  Float    @default(0)
+  avgLaunchAngle Float  @default(0)
+  pullPct      Float    @default(0)
+  flyBallPct   Float    @default(0)
+  xSLG         Float    @default(0)
+  xWOBA        Float    @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dailyScores  DailyScore[]
+  gameStats    GameStat[]
+  statcastEvents StatcastEvent[]
+  watchlists   PlayerWatchlist[]
+  parlayLegs   ParlayLeg[]
+  pitcherFacing PitcherMatchup[] @relation("BatterMatchup")
+
+  @@index([teamId])
+  @@index([name])
+  @@index([active])
+}
+
+model Pitcher {
+  id           String   @id // MLB player ID
+  name         String
+  firstName    String
+  lastName     String
+  throws       Hand     @default(RIGHT)
+  active       Boolean  @default(true)
+  teamId       String?
+
+  // Pitching stats
+  era          Float    @default(0)
+  xERA         Float    @default(0)
+  fip          Float    @default(0)
+  whip         Float    @default(0)
+  hr9          Float    @default(0)
+  flyBallPct   Float    @default(0)
+  hardContactPct Float  @default(0)
+  barrelPct    Float    @default(0)
+  avgFastball  Float    @default(0)
+  
+  // Vulnerability scores
+  hrVulnScore  Int      @default(50) // 0-100
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  games        GamePitcher[]
+  matchups     PitcherMatchup[] @relation("PitcherMatchup")
+
+  @@index([teamId])
+  @@index([name])
+}
+
+enum Hand {
+  LEFT
+  RIGHT
+  SWITCH
+}
+
+// ─────────────────────────────────────────
+// GAMES
+// ─────────────────────────────────────────
+
+model Game {
+  id           String      @id // MLB game ID
+  date         DateTime
+  status       GameStatus  @default(SCHEDULED)
+  inning       Int?
+  inningHalf   String?     // "top" | "bottom"
+  
+  homeTeamId   String
+  homeTeam     Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeamId   String
+  awayTeam     Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homeScore    Int         @default(0)
+  awayScore    Int         @default(0)
+  
+  stadiumId    String?
+  stadium      Stadium?    @relation(fields: [stadiumId], references: [id])
+  
+  // HR Environment
+  hrEnvironment Int        @default(50) // 0-100
+  projectedHRs  Float      @default(2.0)
+  
+  // Odds
+  homeOdds     Int?        // American odds
+  awayOdds     Int?
+  overUnder    Float?
+  
+  // Lineup status
+  homeLineupConfirmed Boolean @default(false)
+  awayLineupConfirmed Boolean @default(false)
+  
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  weather      Weather?
+  pitchers     GamePitcher[]
+  lineups      LineupEntry[]
+  gameStats    GameStat[]
+
+  @@index([date])
+  @@index([status])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+}
+
+enum GameStatus {
+  SCHEDULED
+  WARMUP
+  IN_PROGRESS
+  FINAL
+  POSTPONED
+  SUSPENDED
+}
+
+model GamePitcher {
+  id        String  @id @default(cuid())
+  gameId    String
+  game      Game    @relation(fields: [gameId], references: [id])
+  pitcherId String
+  pitcher   Pitcher @relation(fields: [pitcherId], references: [id])
+  role      PitcherRole
+  teamSide  String  // "home" | "away"
+
+  @@unique([gameId, pitcherId, role])
+  @@index([gameId])
+}
+
+enum PitcherRole {
+  STARTER
+  RELIEVER
+  CLOSER
+}
+
+model LineupEntry {
+  id        String  @id @default(cuid())
+  gameId    String
+  game      Game    @relation(fields: [gameId], references: [id])
+  playerId  String
+  player    Player  @relation(fields: [playerId], references: [id])
+  battingOrder Int
+  position  String
+  teamSide  String  // "home" | "away"
+  confirmed Boolean @default(false)
+
+  @@unique([gameId, playerId])
+  @@index([gameId])
+}
+
+// ─────────────────────────────────────────
+// WEATHER
+// ─────────────────────────────────────────
+
+model Weather {
+  id           String  @id @default(cuid())
+  gameId       String  @unique
+  game         Game    @relation(fields: [gameId], references: [id])
+  
+  temperature  Float   // Fahrenheit
+  humidity     Float   // percentage
+  windSpeed    Float   // mph
+  windDirection Int    // degrees (0-360)
+  windDirectionLabel String // "Out to RF", "In from CF", etc.
+  pressure     Float   // inHg
+  altitude     Int     // feet (from stadium)
+  airDensity   Float   // lb/ft3
+  
+  // Derived
+  hrBoost      Float   @default(0) // -15 to +15 percent
+  ballCarry    String  @default("Neutral") // "Favorable", "Neutral", "Unfavorable"
+  roofOpen     Boolean @default(true)
+  
+  fetchedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([gameId])
+}
+
+// ─────────────────────────────────────────
+// SCORES & PREDICTIONS
+// ─────────────────────────────────────────
+
+model DailyScore {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id])
+  date         DateTime
+  gameId       String?
+  
+  // Core scores
+  nukeScore    Int      // 0-100
+  hrProbability Float   // 0-1
+  expectedHRs  Float
+  confidence   Float    // 0-1
+  
+  // Component scores
+  valueScore   Float    @default(0)
+  riskScore    Float    @default(0)
+  leverageScore Float   @default(0)
+  upsideScore  Float    @default(0)
+  
+  // Boost factors
+  weatherBoost  Float   @default(0)
+  parkBoost     Float   @default(0)
+  matchupBoost  Float   @default(0)
+  formBoost     Float   @default(0)
+  
+  // Model inputs snapshot (JSON)
+  modelInputs   Json?
+  
+  // Lineup position
+  battingOrder  Int?
+  
+  // Odds comparison
+  bookOdds      Float?  // implied probability from best book
+  edge          Float?  // model - book
+  
+  // Outcome tracking
+  actualHR      Boolean?
+  
+  rank          Int?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([playerId, date])
+  @@index([date])
+  @@index([nukeScore])
+  @@index([hrProbability])
+}
+
+// ─────────────────────────────────────────
+// STATCAST EVENTS
+// ─────────────────────────────────────────
+
+model StatcastEvent {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id])
+  gameDate     DateTime
+  gameId       String?
+  
+  exitVelocity  Float?
+  launchAngle   Float?
+  distance      Int?
+  isHomeRun     Boolean @default(false)
+  pitchType     String?
+  pitchVelocity Float?
+  inning        Int?
+  
+  createdAt    DateTime @default(now())
+
+  @@index([playerId])
+  @@index([gameDate])
+  @@index([isHomeRun])
+}
+
+model GameStat {
+  id           String   @id @default(cuid())
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id])
+  gameId       String
+  game         Game     @relation(fields: [gameId], references: [id])
+  date         DateTime
+  
+  atBats       Int      @default(0)
+  hits         Int      @default(0)
+  homeRuns     Int      @default(0)
+  rbi          Int      @default(0)
+  strikeouts   Int      @default(0)
+  walks        Int      @default(0)
+  
+  createdAt    DateTime @default(now())
+
+  @@unique([playerId, gameId])
+  @@index([playerId])
+  @@index([date])
+}
+
+// ─────────────────────────────────────────
+// MATCHUPS
+// ─────────────────────────────────────────
+
+model PitcherMatchup {
+  id         String  @id @default(cuid())
+  playerId   String
+  player     Player  @relation("BatterMatchup", fields: [playerId], references: [id])
+  pitcherId  String
+  pitcher    Pitcher @relation("PitcherMatchup", fields: [pitcherId], references: [id])
+  
+  atBats     Int     @default(0)
+  hits       Int     @default(0)
+  homeRuns   Int     @default(0)
+  avg        Float   @default(0)
+  slg        Float   @default(0)
+  
+  @@unique([playerId, pitcherId])
+  @@index([playerId])
+  @@index([pitcherId])
+}
+
+// ─────────────────────────────────────────
+// USER FEATURES
+// ─────────────────────────────────────────
+
+model Alert {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  type      AlertType
+  playerId  String?
+  teamId    String?
+  threshold Float?    // e.g. fire when hrProbability > threshold
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+enum AlertType {
+  HR_ALERT
+  LINEUP_CONFIRMED
+  WEATHER_CHANGE
+  INJURY
+  EDGE_ALERT
+  LINEUP_ALERT
+}
+
+model CustomModel {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id])
+  name         String
+  
+  // Weights (must sum to 1.0)
+  exitVeloWeight   Float @default(0.18)
+  barrelWeight     Float @default(0.18)
+  pitcherWeight    Float @default(0.17)
+  parkWeight       Float @default(0.14)
+  weatherWeight    Float @default(0.12)
+  platoonWeight    Float @default(0.09)
+  formWeight       Float @default(0.07)
+  matchupWeight    Float @default(0.05)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Parlay {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  name         String?
+  parlayType   ParlayType @default(CUSTOM)
+  combinedProb Float
+  impliedOdds  Int        // American odds
+  date         DateTime
+  
+  legs         ParlayLeg[]
+  
+  createdAt    DateTime   @default(now())
+
+  @@index([userId])
+  @@index([date])
+}
+
+enum ParlayType {
+  SAFE
+  AGGRESSIVE
+  SLEEPER
+  CUSTOM
+}
+
+model ParlayLeg {
+  id        String  @id @default(cuid())
+  parlayId  String
+  parlay    Parlay  @relation(fields: [parlayId], references: [id])
+  playerId  String
+  player    Player  @relation(fields: [playerId], references: [id])
+  hrProb    Float
+  bookProb  Float?
+
+  @@index([parlayId])
+}
+
+model PlayerWatchlist {
+  userId    String
+  user      User   @relation(fields: [userId], references: [id])
+  playerId  String
+  player    Player @relation(fields: [playerId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([userId, playerId])
+}
+
+// ─────────────────────────────────────────
+// ODDS
+// ─────────────────────────────────────────
+
+model PlayerOdds {
+  id        String   @id @default(cuid())
+  playerId  String
+  date      DateTime
+  book      Sportsbook
+  market    String   // "player_home_runs"
+  line      Float    // 0.5
+  overOdds  Int      // American odds for over
+  impliedProb Float  // derived from odds
+  fetchedAt DateTime @default(now())
+
+  @@unique([playerId, date, book, market])
+  @@index([playerId, date])
+}
+
+enum Sportsbook {
+  DRAFTKINGS
+  FANDUEL
+  BETMGM
+  CAESARS
+  POINTSBET
+}
+
+// ─────────────────────────────────────────
+// MODEL TRACKING
+// ─────────────────────────────────────────
+
+model ModelPrediction {
+  id           String   @id @default(cuid())
+  date         DateTime
+  playerId     String
+  predictedProb Float
+  actualResult  Boolean?
+  brierContrib  Float?
+  modelVersion  String   @default("1.0")
+  createdAt    DateTime @default(now())
+
+  @@index([date])
+  @@index([playerId])
+}
+
+model ModelAccuracy {
+  id           String   @id @default(cuid())
+  date         DateTime @unique
+  totalPreds   Int
+  correctTop10 Int
+  brierScore   Float
+  roi          Float
+  modelVersion String   @default("1.0")
+  createdAt    DateTime @default(now())
+
+  @@index([date])
+}
