@@ -1,0 +1,132 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Nuke Tracker dark theme */
+    --background:    215 25% 5%;     /* #080c14 */
+    --foreground:    210 60% 95%;    /* #e8f0fe */
+    --surface:       215 30% 10%;    /* #0d1520 */
+    --surface-2:     215 28% 13%;    /* #111d2e */
+    --border:        215 25% 18%;    /* #1e2f45 */
+    --border-2:      215 22% 21%;    /* #243347 */
+    --primary:       16 86% 56%;     /* #f04a2a nuke red */
+    --primary-foreground: 0 0% 100%;
+    --secondary:     215 25% 16%;
+    --secondary-foreground: 210 60% 85%;
+    --muted:         215 20% 25%;
+    --muted-foreground: 215 15% 55%;
+    --accent:        16 86% 56%;
+    --accent-foreground: 0 0% 100%;
+    --card:          215 30% 10%;
+    --card-foreground: 210 60% 95%;
+    --destructive:   0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --radius: 0.5rem;
+  }
+
+  /* Force dark — Nuke Tracker is dark-only */
+  * { color-scheme: dark; }
+
+  body {
+    @apply bg-background text-foreground;
+    background-color: hsl(215, 25%, 5%);
+    color: hsl(210, 60%, 95%);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(215, 20%, 25%);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(215, 20%, 35%); }
+}
+
+@layer components {
+  /* Nuke score bar gradient */
+  .nuke-score-bar {
+    background: linear-gradient(90deg, #22c97e 0%, #f5b940 50%, #f04a2a 100%);
+  }
+
+  /* Glass card */
+  .glass-card {
+    background: rgba(13, 21, 32, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(30, 47, 69, 0.6);
+  }
+
+  /* Live pulse indicator */
+  .live-dot::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f04a2a;
+    animation: pulse 2s infinite;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* Stat mono */
+  .stat-mono {
+    font-family: 'DM Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Boost badge variants */
+  .boost-favorable {
+    @apply bg-nuke-green/10 text-nuke-green border border-nuke-green/20 text-xs font-bold px-2 py-0.5 rounded;
+  }
+  .boost-unfavorable {
+    @apply bg-nuke-red/10 text-red-400 border border-nuke-red/20 text-xs font-bold px-2 py-0.5 rounded;
+  }
+  .boost-neutral {
+    @apply bg-white/5 text-nuke-muted2 border border-white/10 text-xs font-bold px-2 py-0.5 rounded;
+  }
+
+  /* Confidence indicators */
+  .conf-high { @apply text-nuke-green; }
+  .conf-med  { @apply text-nuke-gold; }
+  .conf-low  { @apply text-nuke-muted2; }
+
+  /* Rank number */
+  .rank-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: hsl(215, 15%, 55%);
+    min-width: 2rem;
+    text-align: right;
+    display: inline-block;
+  }
+  .rank-num.top-3 { color: #f5b940; }
+
+  /* HR probability colors */
+  .prob-high { color: #22c97e; }
+  .prob-med  { color: #f5b940; }
+  .prob-low  { color: #8098b8; }
+}
+
+@layer utilities {
+  .text-gradient-fire {
+    background: linear-gradient(135deg, #f04a2a, #f5b940);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .animate-score-flash {
+    animation: scoreFlash 0.6s ease-out;
+  }
+
+  @keyframes scoreFlash {
+    0%   { box-shadow: 0 0 0 0 rgba(240, 74, 42, 0.4); }
+    70%  { box-shadow: 0 0 0 6px rgba(240, 74, 42, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(240, 74, 42, 0); }
+  }
+}
